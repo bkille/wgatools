@@ -5,7 +5,7 @@ use wgalib::log::init_logger;
 use wgalib::tools::tview::tview;
 use wgalib::utils::{
     wrap_build_index, wrap_chain2maf, wrap_chain2paf, wrap_chunk, wrap_dotplot, wrap_filter,
-    wrap_maf2chain, wrap_maf2paf, wrap_maf2sam, wrap_maf_call, wrap_maf_extract, wrap_paf2chain,
+    wrap_maf2chain, wrap_maf2paf, wrap_maf2msa, wrap_maf2sam, wrap_maf_call, wrap_maf_extract, wrap_paf2chain,
     wrap_paf2maf, wrap_paf_cov, wrap_paf_pesudo_maf, wrap_rename_maf, wrap_stat,
 };
 
@@ -84,6 +84,9 @@ fn main_entry() -> Result<(), WGAError> {
                 false,
                 sample.as_deref(),
             )?;
+        }
+        Commands::Maf2Msa { input } => {
+            wrap_maf2msa(input, &outfile, rewrite)?;
         }
         Commands::Maf2Sam { input } => {
             wrap_maf2sam(input, &outfile, rewrite)?;

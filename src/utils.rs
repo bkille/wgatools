@@ -1,5 +1,5 @@
 use crate::{
-    converter::{chain2maf, chain2paf, maf2chain, maf2paf, maf2sam, paf2chain, paf2maf},
+    converter::{chain2maf, chain2paf, maf2chain, maf2paf, maf2msa, maf2sam, paf2chain, paf2maf},
     errors::WGAError,
     parser::{
         chain::ChainReader,
@@ -159,6 +159,15 @@ pub fn wrap_maf2chain(input: &Option<String>, output: &str, rewrite: bool) -> Re
     let (reader, mut writer) = prepare_rdr_wtr(input, output, rewrite)?;
     let mut mafrdr = MAFReader::new(reader)?;
     maf2chain(&mut mafrdr, &mut writer)?;
+    Ok(())
+}
+
+/// Command: maf2msa
+pub fn wrap_maf2msa(input: &Option<String>, output: &str, rewrite: bool) -> Result<(), WGAError> {
+    // prepare reader and writer
+    let (reader, mut writer) = prepare_rdr_wtr(input, output, rewrite)?;
+    let mut mafrdr = MAFReader::new(reader)?;
+    maf2msa(&mut mafrdr, &mut writer)?;
     Ok(())
 }
 

@@ -140,6 +140,13 @@ pub enum Commands {
         #[arg(required = false, long = "svlen", short = 'l', default_value = "50")]
         svlen: u64,
     },
+    /// Concatinate MAF into single MSA file
+    #[command(visible_alias = "cc", name = "maf2msa")]
+    Maf2Msa {
+        /// Input MAF File, None for STDIN
+        #[arg(required = false)]
+        input: Option<String>,
+    },
     /// View MAF file in terminal
     #[command(visible_alias = "tv", name = "tview")]
     Tview {

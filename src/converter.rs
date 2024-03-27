@@ -19,8 +19,11 @@ use noodles::sam::{
 };
 use rayon::prelude::*;
 use rust_htslib::faidx;
-use std::io::{Read, Write};
+use std::io::{Read, Write, BufWriter};
+use std::{fs::File, fs::read_dir, fs::read_to_string};
 use std::num::NonZeroUsize;
+use std::collections::{HashMap, HashSet};
+use tempfile::tempdir;
 
 /// Convert a MAF Reader to output a PAF file
 pub fn maf2paf<R: Read + Send>(
@@ -73,6 +76,103 @@ pub fn maf2chain<R: Read + Send>(
         // additional newline for standard chain format
         writer.write_all(b"\n\n")?;
     }
+    writer.flush()?;
+    Ok(())
+}
+
+/// Convert a MAF Reader to output a MSA file
+pub fn maf2msa<R: Read + Send>(
+    mafreader: &mut MAFReader<R>,
+    writer: &mut Box<dyn Write>,
+) -> Result<(), WGAError> {
+
+    // Temporary directory of aligned sequences
+    let tmp_dir = tempdir()?;
+
+    // Map of sequence ids to writers to the corresponding temp file
+    let mut name_to_writer: HashMap<String, Box<BufWriter<dyn Write>>> = HashMap::new();
+    
+    // Keep track of names seen
+    let mut all_names: HashSet<String> = HashSet::new();
+
+    // Keep track of alignment size in case we come across a new sequence
+    let mut total_cols: usize = 0;
+
+    // iterate over records and append each sequence to a temporary
+    // fasta file according to the seq name
+    for record in mafreader.records() {
+        let record = record?;
+        let mut block_cols: usize = 0;
+        let mut block_names: HashSet<String> = HashSet::new();
+
+        // Add each alignment entry to the corresponding temp file
+        for block_entry in record.slines {
+            block_cols = block_entry.seq.len();
+
+            // Only include first copy of multi-copy paralogs
+            // This may introduce some bias, but the alternative is to drop the entire block.
+            // Dropping the whol block would reduce noise at the cost of potentially
+            // tossing out useful info. 
+            if block_names.contains(&block_entry.name) {
+                log::warn!(
+                    "{} is present multiple times in a single block, only using first occurence.", 
+                    &block_entry.name);
+                continue;
+            }
+            block_names.insert(block_entry.name.to_string());
+
+            if !name_to_writer.contains_key(&block_entry.name) {
+                let file_path = tmp_dir
+                    .path()
+                    .join(format!("seq-{}.fa", name_to_writer.len()));
+                let file = File::create(file_path)?;
+                name_to_writer
+                    .insert(block_entry.name.to_string(), Box::new(BufWriter::new(file)));
+                name_to_writer
+                    .get_mut(&block_entry.name)
+                    .unwrap()
+                    .write(format!(">{}\n", block_entry.name).as_bytes())?;
+
+                // If we've already written another block which didn't include this one,
+                // we need to pad it so that the columns match up
+                if total_cols > 0 {
+                    name_to_writer
+                        .get_mut(&block_entry.name)
+                        .unwrap()
+                        .write("-".repeat(total_cols).as_bytes())?;
+                }
+            } 
+
+            // Write the sequence
+            name_to_writer
+                .get_mut(&block_entry.name)
+                .unwrap()
+                .write(block_entry.seq.as_bytes())?;
+        }
+
+        // Add gaps to missing sequence names
+        for missing_name in all_names.difference(&block_names) {
+            name_to_writer
+                .get_mut(missing_name)
+                .unwrap()
+                .write("-".repeat(block_cols).as_bytes())?;
+        }
+
+        total_cols += block_cols;
+        all_names.extend(block_names);
+    }
+
+    // Add newline and flush all buffers
+    name_to_writer.iter_mut()
+        .for_each(|(&ref _name, bw)| {bw.write("\n".as_bytes()).unwrap(); bw.flush().unwrap();});
+    drop(name_to_writer);
+
+    // Write all files to final MSA file
+    for path in read_dir(&tmp_dir).unwrap() {
+        writer.write_all(read_to_string(path.unwrap().path())?.as_bytes())?;
+    }
+
+    // additional newline for standard chain format
     writer.flush()?;
     Ok(())
 }
